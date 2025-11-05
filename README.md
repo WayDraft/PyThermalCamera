@@ -5,8 +5,6 @@ Huge kudos to LeoDJ on the EEVBlog forum for reverse engineering the image forma
 https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
 Check out Leo's Github here: https://github.com/LeoDJ/P2Pro-Viewer/tree/main
 
-
-
 ## Introduction
 
 This is a quick and dirty Python implimentation of Thermal Camera software for the Topdon TC001!
@@ -21,10 +19,7 @@ This readme is accompanied by youtube videos. Visit my Youtube Channel at: https
 
 The video is here: https://youtu.be/PiVwZoQ8_jQ
 
-
-
 ## Features
-
 
 Tested on Debian all features are working correctly This has been tested on the Pi However a number of workarounds are implemented! Seemingly there are bugs in the compiled version of openCV that ships with the Pi!!
 
@@ -41,6 +36,8 @@ The following features have been implemented:
 - Floating Maximum and Minimum temperature values within the scene, with variable threshold.
 - Video recording is implemented (saved as AVI in the working directory).
 - Snapshot images are implemented (saved as PNG in the working directory).
+- **RTSP Streaming**: Stream the thermal video over RTSP for remote access.
+- **API Access**: Access HUD data via HTTP API for external monitoring.
 
 The current settings are displayed in a box at the top left of the screen (The HUD):
 
@@ -58,12 +55,11 @@ The current settings are displayed in a box at the top left of the screen (The H
 
 ## Dependencies
 
-Python3 OpenCV Must be installed:
+Python3, OpenCV, Flask, and ffmpeg must be installed:
 
+Run: **sudo apt-get install python3-opencv ffmpeg**
 
-Run: **sudo apt-get install python3-opencv**
-
-
+Install Python dependencies: **pip install -r requirements.txt**
 
 ## Running the Program
 
@@ -71,12 +67,13 @@ In src you will find two programs:
 
 **tc001-RAW.py** Just demonstrates how to grab raw frames from the Thermal Camera, a starting point if you want to code your own app.
 
-
-**tc001v4.2.py** The main program!
+**tc001v4.2.py** The main program with RTSP streaming and API!
 
 To run it plug in the thermal camera and run: **v4l2-ctl --list-devices** to list the devices on the system. You will need its device number.
 
 Assuming the device number is 0 simply issue: **python3 tc001v4.2.py --device 0**
+
+The program will start RTSP streaming to rtsp://localhost:8554/stream and API server at http://localhost:5000/api/hud
 
 **Note**
 This is in Alpha. No error checking has been implemented yet! So if the program tries to start, then quits, either a camera is not connected, or you have entered the wrong device number.
@@ -113,4 +110,5 @@ Error checking will be implemented after I refactor and optimize the code!
 - The code would benefit from threading especially on low speed but multicore architectures like the Pi!
 - I might add a graph.
 - I may add the ability to arbitrarily measure points.
+- RTSP streaming and API access have been added for remote monitoring.
 

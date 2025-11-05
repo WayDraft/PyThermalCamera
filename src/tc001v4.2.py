@@ -3,10 +3,12 @@
 Les Wright 21 June 2023
 https://youtube.com/leslaboratory
 A Python program to read, parse and display thermal data from the Topdon TC001 Thermal camera!
+Modified to stream via RTSP and provide HUD data via API.
 '''
 print('Les Wright 21 June 2023')
 print('https://youtube.com/leslaboratory')
 print('A Python program to read, parse and display thermal data from the Topdon TC001 Thermal camera!')
+print('Modified for RTSP streaming and API access.')
 print('')
 print('Tested on Debian all features are working correctly')
 print('This will work on the Pi However a number of workarounds are implemented!')
@@ -29,6 +31,119 @@ import numpy as np
 import argparse
 import time
 import io
+import threading
+from flask import Flask, jsonify
+import subprocess
+import sys
+
+# Flask app for API
+app = Flask(__name__)
+
+# Global variables for HUD data
+hud_data = {
+    'avg_temp': 0.0,
+    'label_threshold': 2,
+    'colormap': 'Jet',
+    'blur': 0,
+    'scaling': 3,
+    'contrast': 1.0,
+    'snapshot': 'None',
+    'recording': '00:00:00',
+    'center_temp': 0.0,
+    'max_temp': 0.0,
+    'min_temp': 0.0
+}
+
+@app.route('/api/hud')
+def get_hud():
+    return jsonify(hud_data)
+
+def run_api():
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
+#We need to know if we are running on the Pi, because openCV behaves a little oddly on all the builds!
+#https://raspberrypi.stackexchange.com/questions/5100/detect-that-a-python-program-is-running-on-the-pi
+def is_raspberrypi():
+    try:
+        with io.open('/sys/firmware/devicetree/base/model', 'r') as m:
+            if 'raspberry pi' in m.read().lower(): return True
+    except Exception: pass
+    return False
+
+isPi = is_raspberrypi()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--device", type=int, default=0, help="Video Device number e.g. 0, use v4l2-ctl --list-devices")
+args = parser.parse_args()
+	
+if args.device:
+	dev = args.device
+else:
+	dev = 0
+	
+#init video
+cap = cv2.VideoCapture('/dev/video'+str(dev), cv2.CAP_V4L)
+#cap = cv2.VideoCapture(0)
+#pull in the video but do NOT automatically convert to RGB, else it breaks the temperature data!
+#https://stackoverflow.com/questions/63108721/opencv-setting-videocap-property-to-cap-prop-convert-rgb-generates-weird-boolean
+if isPi == True:
+	cap.set(cv2.CAP_PROP_CONVERT_RGB, 0.0)
+else:
+	cap.set(cv2.CAP_PROP_CONVERT_RGB, False)
+
+#256x192 General settings
+width = 256 #Sensor width
+height = 192 #sensor height
+scale = 3 #scale multiplier
+newWidth = width*scale 
+newHeight = height*scale
+alpha = 1.0 # Contrast control (1.0-3.0)
+colormap = 0
+font=cv2.FONT_HERSHEY_SIMPLEX
+dispFullscreen = False
+rad = 0 #blur radius
+threshold = 2
+hud = True
+recording = False
+elapsed = "00:00:00"
+snaptime = "None"
+
+# Start RTSP streaming with ffmpeg
+rtsp_url = 'rtsp://0.0.0.0:8554/stream'
+ffmpeg_cmd = [
+    'ffmpeg',
+    '-f', 'rawvideo',
+    '-pix_fmt', 'bgr24',
+    '-s', f'{newWidth}x{newHeight}',
+    '-i', '-',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-tune', 'zerolatency',
+    '-f', 'rtsp',
+    rtsp_url
+]
+ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+
+def rec():
+	now = time.strftime("%Y%m%d--%H%M%S")
+	#do NOT use mp4 here, it is flakey!
+	videoOut = cv2.VideoWriter(now+'output.avi', cv2.VideoWriter_fourcc(*'XVID'),25, (newWidth,newHeight))
+	return(videoOut)
+
+def snapshot(heatmap):
+	#I would put colons in here, but it Win throws a fit if you try and open them!
+	now = time.strftime("%Y%m%d-%H%M%S") 
+	snaptime = time.strftime("%H:%M:%S")
+	cv2.imwrite("TC001"+now+".png", heatmap)
+	return snaptime
+
+# Start API server in a separate thread
+api_thread = threading.Thread(target=run_api)
+api_thread.daemon = True
+api_thread.start()
+
+print(f'Streaming to RTSP: {rtsp_url}')
+print('API available at http://localhost:5000/api/hud')
 
 #We need to know if we are running on the Pi, because openCV behaves a little oddly on all the builds!
 #https://raspberrypi.stackexchange.com/questions/5100/detect-that-a-python-program-is-running-on-the-pi
@@ -144,6 +259,18 @@ while(cap.isOpened()):
 		avgtemp = (avgtemp/64)-273.15
 		avgtemp = round(avgtemp,2)
 
+		# Update HUD data
+		hud_data['avg_temp'] = avgtemp
+		hud_data['center_temp'] = temp
+		hud_data['max_temp'] = maxtemp
+		hud_data['min_temp'] = mintemp
+		hud_data['label_threshold'] = threshold
+		hud_data['blur'] = rad
+		hud_data['scaling'] = scale
+		hud_data['contrast'] = alpha
+		hud_data['snapshot'] = snaptime
+		hud_data['recording'] = elapsed
+
 		
 
 		# Convert the real image to RGB
@@ -190,6 +317,8 @@ while(cap.isOpened()):
 			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_RAINBOW)
 			heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
 			cmapText = 'Inv Rainbow'
+
+		hud_data['colormap'] = cmapText
 
 		#print(heatmap.shape)
 
@@ -262,7 +391,9 @@ while(cap.isOpened()):
 			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
 
 		#display image
-		cv2.imshow('Thermal',heatmap)
+		#cv2.imshow('Thermal',heatmap)
+		# Write frame to ffmpeg for RTSP streaming
+		ffmpeg_proc.stdin.write(heatmap.tobytes())
 
 		if recording == True:
 			elapsed = (time.time() - start)
@@ -348,6 +479,8 @@ while(cap.isOpened()):
 
 		if keyPress == ord('q'):
 			break
-			capture.release()
-			cv2.destroyAllWindows()
+
+cap.release()
+ffmpeg_proc.terminate()
+cv2.destroyAllWindows()
 		
