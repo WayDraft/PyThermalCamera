@@ -22,8 +22,7 @@ import argparse
 import time
 import io
 import threading
-from flask import Flask, jsonify
-import subprocess
+from flask import Flask, jsonify, Response
 import sys
 import os
 
@@ -45,17 +44,31 @@ hud_data = {
     'min_temp': 0.0
 }
 
+# Global frame for streaming
+current_frame = None
+
 @app.route('/api/hud')
 def get_hud():
     return jsonify(hud_data)
 
 @app.route('/shutdown')
 def shutdown():
-    global cap, ffmpeg_proc
+    global cap
     cap.release()
-    ffmpeg_proc.terminate()
     cv2.destroyAllWindows()
     os._exit(0)
+
+@app.route('/video')
+def video_feed():
+    def generate():
+        while True:
+            if current_frame is not None:
+                ret, jpeg = cv2.imencode('.jpg', current_frame)
+                if ret:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
+            time.sleep(0.1)  # Adjust frame rate
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 def run_api():
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
@@ -104,22 +117,7 @@ threshold = 2
 hud = True
 snaptime = "None"
 
-# Start RTSP streaming with ffmpeg
-rtsp_url = 'rtsp://0.0.0.0:8554/stream'
-ffmpeg_cmd = [
-    'ffmpeg',
-    '-f', 'rawvideo',
-    '-pix_fmt', 'bgr24',
-    '-s', f'{newWidth}x{newHeight}',
-    '-i', '-',
-    '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-tune', 'zerolatency',
-    '-f', 'rtsp',
-    '-listen', '1',
-    rtsp_url
-]
-ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+snaptime = "None"
 
 def snapshot(heatmap):
 	#I would put colons in here, but it Win throws a fit if you try and open them!
@@ -133,7 +131,7 @@ api_thread = threading.Thread(target=run_api)
 api_thread.daemon = True
 api_thread.start()
 
-print(f'Streaming to RTSP: {rtsp_url}')
+print(f'Video streaming at http://localhost:5000/video')
 print('API available at http://localhost:5000/api/hud')
 print('Shutdown via http://localhost:5000/shutdown')
 
@@ -146,10 +144,9 @@ while(cap.isOpened()):
 		#https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
 		#Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
 		#grab data from the center pixel...
-		hi = thdata[96][128][0]
-		lo = thdata[96][128][1]
-		lo = int(lo)*256
-		rawtemp = hi+lo
+		hi = int(thdata[96][128][0])
+		lo = int(thdata[96][128][1]) * 256
+		rawtemp = hi + lo
 		temp = (rawtemp/64)-273.15
 		temp = round(temp,2)
 
@@ -158,7 +155,7 @@ while(cap.isOpened()):
 		posmax = thdata[...,1].argmax()
 		#since argmax returns a linear index, convert back to row and col
 		mcol,mrow = divmod(posmax,width)
-		himax = thdata[mcol][mrow][0]
+		himax = int(thdata[mcol][mrow][0])
 		lomax=int(lomax)*256
 		maxtemp = himax+lomax
 		maxtemp = (maxtemp/64)-273.15
@@ -170,7 +167,7 @@ while(cap.isOpened()):
 		posmin = thdata[...,1].argmin()
 		#since argmax returns a linear index, convert back to row and col
 		lcol,lrow = divmod(posmin,width)
-		himin = thdata[lcol][lrow][0]
+		himin = int(thdata[lcol][lrow][0])
 		lomin=int(lomin)*256
 		mintemp = himin+lomin
 		mintemp = (mintemp/64)-273.15
@@ -302,9 +299,7 @@ while(cap.isOpened()):
 			cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
 			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
 
-		# Write frame to ffmpeg for RTSP streaming
-		ffmpeg_proc.stdin.write(heatmap.tobytes())
+		current_frame = heatmap
 
 cap.release()
-ffmpeg_proc.terminate()
 cv2.destroyAllWindows()
