@@ -148,7 +148,7 @@ while(cap.isOpened()):
 		#grab data from the center pixel...
 		hi = thdata[96][128][0]
 		lo = thdata[96][128][1]
-		lo = lo*256
+		lo = int(lo)*256
 		rawtemp = hi+lo
 		temp = (rawtemp/64)-273.15
 		temp = round(temp,2)
@@ -159,18 +159,19 @@ while(cap.isOpened()):
 		#since argmax returns a linear index, convert back to row and col
 		mcol,mrow = divmod(posmax,width)
 		himax = thdata[mcol][mrow][0]
-		lomax=lomax*256
+		lomax=int(lomax)*256
 		maxtemp = himax+lomax
 		maxtemp = (maxtemp/64)-273.15
 		maxtemp = round(maxtemp,2)
 
+		
 		#find the lowest temperature in the frame
 		lomin = thdata[...,1].min()
 		posmin = thdata[...,1].argmin()
 		#since argmax returns a linear index, convert back to row and col
 		lcol,lrow = divmod(posmin,width)
 		himin = thdata[lcol][lrow][0]
-		lomin=lomin*256
+		lomin=int(lomin)*256
 		mintemp = himin+lomin
 		mintemp = (mintemp/64)-273.15
 		mintemp = round(mintemp,2)
@@ -178,12 +179,10 @@ while(cap.isOpened()):
 		#find the average temperature in the frame
 		loavg = thdata[...,1].mean()
 		hiavg = thdata[...,0].mean()
-		loavg=loavg*256
+		loavg=int(loavg)*256
 		avgtemp = loavg+hiavg
 		avgtemp = (avgtemp/64)-273.15
-		avgtemp = round(avgtemp,2)
-
-		# Update HUD data
+		avgtemp = round(avgtemp,2)		# Update HUD data
 		hud_data['avg_temp'] = avgtemp
 		hud_data['center_temp'] = temp
 		hud_data['max_temp'] = maxtemp
