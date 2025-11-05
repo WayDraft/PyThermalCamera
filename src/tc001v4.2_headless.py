@@ -94,7 +94,10 @@ else:
 	dev = 0
 	
 #init video
-cap = cv2.VideoCapture('/dev/video'+str(dev), cv2.CAP_V4L)
+cap = cv2.VideoCapture('/dev/video'+str(dev))
+if not cap.isOpened():
+    print(f"Error: Could not open video device /dev/video{dev}")
+    exit(1)
 #cap = cv2.VideoCapture(0)
 #pull in the video but do NOT automatically convert to RGB, else it breaks the temperature data!
 #https://stackoverflow.com/questions/63108721/opencv-setting-videocap-property-to-cap-prop-convert-rgb-generates-weird-boolean
