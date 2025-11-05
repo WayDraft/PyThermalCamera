@@ -120,6 +120,7 @@ ffmpeg_cmd = [
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-f', 'rtsp',
+    '-listen', '1',
     rtsp_url
 ]
 ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
