@@ -240,68 +240,6 @@ while(cap.isOpened()):
 
 		hud_data['colormap'] = cmapText
 
-		# draw crosshairs
-		cv2.line(heatmap,(int(newWidth/2),int(newHeight/2)+20),\
-		(int(newWidth/2),int(newHeight/2)-20),(255,255,255),2) #vline
-		cv2.line(heatmap,(int(newWidth/2)+20,int(newHeight/2)),\
-		(int(newWidth/2)-20,int(newHeight/2)),(255,255,255),2) #hline
-
-		cv2.line(heatmap,(int(newWidth/2),int(newHeight/2)+20),\
-		(int(newWidth/2),int(newHeight/2)-20),(0,0,0),1) #vline
-		cv2.line(heatmap,(int(newWidth/2)+20,int(newHeight/2)),\
-		(int(newWidth/2)-20,int(newHeight/2)),(0,0,0),1) #hline
-		#show temp
-		cv2.putText(heatmap,str(temp)+' C', (int(newWidth/2)+10, int(newHeight/2)-10),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 0, 0), 2, cv2.LINE_AA)
-		cv2.putText(heatmap,str(temp)+' C', (int(newWidth/2)+10, int(newHeight/2)-10),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
-
-		if hud==True:
-			# display black box for our data
-			cv2.rectangle(heatmap, (0, 0),(160, 120), (0,0,0), -1)
-			# put text in the box
-			cv2.putText(heatmap,'Avg Temp: '+str(avgtemp)+' C', (10, 14),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Label Threshold: '+str(threshold)+' C', (10, 28),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Colormap: '+cmapText, (10, 42),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Blur: '+str(rad)+' ', (10, 56),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Scaling: '+str(scale)+' ', (10, 70),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Contrast: '+str(alpha)+' ', (10, 84),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Snapshot: '+snaptime+' ', (10, 98),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Recording: Not available', (10, 112),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(200, 200, 200), 1, cv2.LINE_AA)
-		
-		#display floating max temp
-		if maxtemp > avgtemp+threshold:
-			cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,0), 2)
-			cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,255), -1)
-			cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
-			cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
-
-		#display floating min temp
-		if mintemp < avgtemp-threshold:
-			cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (0,0,0), 2)
-			cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (255,0,0), -1)
-			cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
-			cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
-
 		current_frame = heatmap
 
 cap.release()
