@@ -35,6 +35,7 @@ import threading
 from flask import Flask, jsonify
 import subprocess
 import sys
+import os
 
 # Flask app for API
 app = Flask(__name__)
@@ -57,6 +58,13 @@ hud_data = {
 @app.route('/api/hud')
 def get_hud():
     return jsonify(hud_data)
+
+@app.route('/shutdown')
+def shutdown():
+    cap.release()
+    ffmpeg_proc.terminate()
+    cv2.destroyAllWindows()
+    os._exit(0)
 
 def run_api():
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
@@ -101,6 +109,8 @@ alpha = 1.0 # Contrast control (1.0-3.0)
 colormap = 0
 font=cv2.FONT_HERSHEY_SIMPLEX
 dispFullscreen = False
+cv2.namedWindow('Thermal',cv2.WINDOW_GUI_NORMAL)
+cv2.resizeWindow('Thermal', newWidth,newHeight)
 rad = 0 #blur radius
 threshold = 2
 hud = True
@@ -396,90 +406,7 @@ while(cap.isOpened()):
 		# Write frame to ffmpeg for RTSP streaming
 		ffmpeg_proc.stdin.write(heatmap.tobytes())
 
-		if recording == True:
-			elapsed = (time.time() - start)
-			elapsed = time.strftime("%H:%M:%S", time.gmtime(elapsed)) 
-			#print(elapsed)
-			videoOut.write(heatmap)
-		
-		keyPress = cv2.waitKey(1)
-		if keyPress == ord('a'): #Increase blur radius
-			rad += 1
-		if keyPress == ord('z'): #Decrease blur radius
-			rad -= 1
-			if rad <= 0:
-				rad = 0
-
-		if keyPress == ord('s'): #Increase threshold
-			threshold += 1
-		if keyPress == ord('x'): #Decrease threashold
-			threshold -= 1
-			if threshold <= 0:
-				threshold = 0
-
-		if keyPress == ord('d'): #Increase scale
-			scale += 1
-			if scale >=5:
-				scale = 5
-			newWidth = width*scale
-			newHeight = height*scale
-			if dispFullscreen == False and isPi == False:
-				cv2.resizeWindow('Thermal', newWidth,newHeight)
-		if keyPress == ord('c'): #Decrease scale
-			scale -= 1
-			if scale <= 1:
-				scale = 1
-			newWidth = width*scale
-			newHeight = height*scale
-			if dispFullscreen == False and isPi == False:
-				cv2.resizeWindow('Thermal', newWidth,newHeight)
-
-		if keyPress == ord('q'): #enable fullscreen
-			dispFullscreen = True
-			cv2.namedWindow('Thermal',cv2.WND_PROP_FULLSCREEN)
-			cv2.setWindowProperty('Thermal',cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
-		if keyPress == ord('w'): #disable fullscreen
-			dispFullscreen = False
-			cv2.namedWindow('Thermal',cv2.WINDOW_GUI_NORMAL)
-			cv2.setWindowProperty('Thermal',cv2.WND_PROP_AUTOSIZE,cv2.WINDOW_GUI_NORMAL)
-			cv2.resizeWindow('Thermal', newWidth,newHeight)
-
-		if keyPress == ord('f'): #contrast+
-			alpha += 0.1
-			alpha = round(alpha,1)#fix round error
-			if alpha >= 3.0:
-				alpha=3.0
-		if keyPress == ord('v'): #contrast-
-			alpha -= 0.1
-			alpha = round(alpha,1)#fix round error
-			if alpha<=0:
-				alpha = 0.0
-
-
-		if keyPress == ord('h'):
-			if hud==True:
-				hud=False
-			elif hud==False:
-				hud=True
-
-		if keyPress == ord('m'): #m to cycle through color maps
-			colormap += 1
-			if colormap == 11:
-				colormap = 0
-
-		if keyPress == ord('r') and recording == False: #r to start reording
-			videoOut = rec()
-			recording = True
-			start = time.time()
-		if keyPress == ord('t'): #f to finish reording
-			recording = False
-			elapsed = "00:00:00"
-
-		if keyPress == ord('p'): #f to finish reording
-			snaptime = snapshot(heatmap)
-
-		if keyPress == ord('q'):
-			break
+		# Recording removed in headless mode
 
 cap.release()
 ffmpeg_proc.terminate()
