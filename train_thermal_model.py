@@ -18,7 +18,7 @@ def train_thermal_model():
         name='exp1',                         # 실험 이름
         exist_ok=True                        # 기존 실험 덮어쓰기
     )
-    
+
     return results
 
 def validate_model():
