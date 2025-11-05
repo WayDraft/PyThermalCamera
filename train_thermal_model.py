@@ -48,6 +48,10 @@ if __name__ == "__main__":
     # 검증 실행
     validate_model()
     
-    # 테스트 이미지로 테스트 (예시 이미지 경로)
-    test_image = "dataset/val/images/test_image.jpg"  # 이미지 경로는 실제 테스트 이미지로 변경 필요
-    test_on_image(test_image)
+    # 테스트 이미지로 테스트 (첫 번째 검증 이미지 사용)
+    import os
+    val_images_dir = "dataset/val/images"
+    test_images = os.listdir(val_images_dir)
+    if test_images:
+        test_image = os.path.join(val_images_dir, test_images[0])
+        test_on_image(test_image)
