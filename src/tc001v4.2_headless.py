@@ -316,13 +316,8 @@ while(cap.isOpened()):
 		current_frame = heatmap
 
 		# Capture RGB frame from Raspberry Pi camera
-		try:
-			rgb_frame = picam2.capture_array()
-			rgb_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGBA2BGR)
-			print(f"RGB frame captured: shape={rgb_frame.shape}")  # 디버깅 추가
-		except Exception as e:
-			print(f"RGB capture error: {e}")  # 디버깅 추가
-			rgb_frame = None
+		rgb_frame = picam2.capture_array()
+		rgb_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGBA2BGR)
 
 cap.release()
 picam2.stop()
