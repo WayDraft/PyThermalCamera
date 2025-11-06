@@ -25,6 +25,8 @@ import threading
 from flask import Flask, jsonify, Response
 import sys
 import os
+import adafruit_dht
+import board
 
 # Flask app for API
 app = Flask(__name__)
@@ -41,7 +43,9 @@ hud_data = {
     'recording': 'Not available in headless mode',
     'center_temp': 0.0,
     'max_temp': 0.0,
-    'min_temp': 0.0
+    'min_temp': 0.0,
+    'temperature': None,
+    'humidity': None
 }
 
 # Global frame for streaming
@@ -98,6 +102,9 @@ cap = cv2.VideoCapture('/dev/video'+str(dev))
 if not cap.isOpened():
     print(f"Error: Could not open video device /dev/video{dev}")
     exit(1)
+
+# Initialize DHT11 sensor
+dht = adafruit_dht.DHT11(board.D2)  # GPIO02 (pin 3)
 #cap = cv2.VideoCapture(0)
 #pull in the video but do NOT automatically convert to RGB, else it breaks the temperature data!
 #https://stackoverflow.com/questions/63108721/opencv-setting-videocap-property-to-cap-prop-convert-rgb-generates-weird-boolean
@@ -182,7 +189,16 @@ while(cap.isOpened()):
 		loavg=int(loavg)*256
 		avgtemp = loavg+hiavg
 		avgtemp = (avgtemp/64)-273.15
-		avgtemp = round(avgtemp,2)		# Update HUD data
+		avgtemp = round(avgtemp,2)		# Read temperature and humidity from DHT11
+		try:
+			temperature = dht.temperature
+			humidity = dht.humidity
+		except RuntimeError as error:
+			temperature = None
+			humidity = None
+			print(f"DHT11 error: {error}")
+
+		# Update HUD data
 		hud_data['avg_temp'] = avgtemp
 		hud_data['center_temp'] = temp
 		hud_data['max_temp'] = maxtemp
@@ -192,6 +208,8 @@ while(cap.isOpened()):
 		hud_data['scaling'] = scale
 		hud_data['contrast'] = alpha
 		hud_data['snapshot'] = snaptime
+		hud_data['temperature'] = temperature
+		hud_data['humidity'] = humidity
 
 		# Convert the real image to RGB
 		bgr = cv2.cvtColor(imdata,  cv2.COLOR_YUV2BGR_YUYV)
