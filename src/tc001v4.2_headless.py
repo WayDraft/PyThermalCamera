@@ -114,7 +114,7 @@ else:
 	
 #init video
 picam2 = Picamera2()
-picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
+picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (820, 616)}))
 picam2.start()
 
 # For thermal camera, keep cv2 if needed, but for RGB, use picam2
