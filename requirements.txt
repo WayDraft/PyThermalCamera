@@ -1,3 +1,4 @@
 opencv-python
 numpy
 flask
+adafruit-circuitpython-dht
