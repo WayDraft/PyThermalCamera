@@ -27,6 +27,7 @@ import sys
 import os
 import adafruit_dht
 import board
+from picamera2 import Picamera2
 
 # Flask app for API
 app = Flask(__name__)
@@ -50,6 +51,7 @@ hud_data = {
 
 # Global frame for streaming
 current_frame = None
+rgb_frame = None
 
 @app.route('/api/hud')
 def get_hud():
@@ -57,8 +59,9 @@ def get_hud():
 
 @app.route('/shutdown')
 def shutdown():
-    global cap
+    global cap, picam2
     cap.release()
+    picam2.stop()
     cv2.destroyAllWindows()
     os._exit(0)
 
@@ -68,6 +71,18 @@ def video_feed():
         while True:
             if current_frame is not None:
                 ret, jpeg = cv2.imencode('.jpg', current_frame)
+                if ret:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
+            time.sleep(0.1)  # Adjust frame rate
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/rgbvideo')
+def rgb_video_feed():
+    def generate():
+        while True:
+            if rgb_frame is not None:
+                ret, jpeg = cv2.imencode('.jpg', rgb_frame)
                 if ret:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
@@ -98,6 +113,11 @@ else:
 	dev = 0
 	
 #init video
+picam2 = Picamera2()
+picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (820, 616)}))
+picam2.start()
+
+# For thermal camera, keep cv2 if needed, but for RGB, use picam2
 cap = cv2.VideoCapture('/dev/video'+str(dev))
 if not cap.isOpened():
     print(f"Error: Could not open video device /dev/video{dev}")
@@ -142,6 +162,7 @@ api_thread.daemon = True
 api_thread.start()
 
 print(f'Video streaming at http://localhost:5000/video')
+print(f'RGB Video streaming at http://localhost:5000/rgbvideo')
 print('API available at http://localhost:5000/api/hud')
 print('Shutdown via http://localhost:5000/shutdown')
 
@@ -294,5 +315,10 @@ while(cap.isOpened()):
 
 		current_frame = heatmap
 
+		# Capture RGB frame from Raspberry Pi camera
+		rgb_frame = picam2.capture_array()
+		# rgb_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGBA2BGR)
+
 cap.release()
+picam2.stop()
 cv2.destroyAllWindows()
