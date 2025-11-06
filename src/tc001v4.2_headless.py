@@ -317,7 +317,7 @@ while(cap.isOpened()):
 
 		# Capture RGB frame from Raspberry Pi camera
 		rgb_frame = picam2.capture_array()
-		rgb_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGBA2BGR)
+		# rgb_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGBA2BGR)
 
 cap.release()
 picam2.stop()
