@@ -17,6 +17,8 @@ import time
 import datetime
 import threading
 import queue
+from flask import Flask, Response, render_template_string, jsonify
+import requests
 
 # Constants
 THERMAL_MODEL_PATH = 'yolov8n.pt'  # YOLOv8n fine-tuned for thermal
@@ -25,6 +27,21 @@ THERMAL_STREAM_URL = 'http://172.30.1.27:5000/video'  # Thermal MJPEG stream
 RGB_STREAM_URL = 'http://172.30.1.27:5000/rgbvideo'  # RGB MJPEG stream
 CONFIDENCE_THRESHOLD = 0.25  # Detection confidence threshold
 CLASS_PERSON = 0  # Class index for 'person' in COCO dataset
+
+# Flask app
+app = Flask(__name__)
+
+# Global variables for frames
+current_fused_frame = None
+hud_data = {
+    'temperature': None,
+    'humidity': None,
+    'max_temp': 0.0,
+    'min_temp': 0.0,
+    'rgb_count': 0,
+    'thermal_count': 0,
+    'fused_count': 0
+}
 
 class StreamCapture:
     def __init__(self, url, name, max_retries=3, retry_delay=5):
@@ -145,7 +162,7 @@ def draw_fused_detections(frame, detections):
         conf = detection['conf']
         
         # Draw box
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green box for fused
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green box
         
         # Draw label background
         label = f"Fused Person: {conf:.2f}"
@@ -202,12 +219,22 @@ def process_streams(thermal_model, rgb_model, thermal_stream, rgb_stream):
             # Fuse detections
             fused_detections = fuse_detections(thermal_results, rgb_results, thermal_frame, rgb_frame)
 
+            # Update HUD data with counts
+            global hud_data
+            hud_data['rgb_count'] = len(rgb_results[0].boxes) if len(rgb_results) > 0 else 0
+            hud_data['thermal_count'] = len(thermal_results[0].boxes) if len(thermal_results) > 0 else 0
+            hud_data['fused_count'] = len(fused_detections)
+
             # Draw detections on frames
             thermal_frame = draw_detections(thermal_frame, thermal_results, "Thermal")
             rgb_frame = draw_detections(rgb_frame, rgb_results, "RGB")
             
             # Create fused frame (side by side or overlay)
             fused_frame = create_fused_frame(thermal_frame, rgb_frame, fused_detections)
+
+            # Update global fused frame for web streaming
+            global current_fused_frame
+            current_fused_frame = fused_frame.copy()
 
             # Show frames
             cv2.imshow('Thermal Detection', thermal_frame)
@@ -279,6 +306,115 @@ def create_fused_frame(thermal_frame, rgb_frame, fused_detections):
     
     return combined
 
+def fetch_hud_data():
+    """Fetch HUD data from the thermal camera API"""
+    global hud_data
+    try:
+        response = requests.get('http://172.30.1.27:5000/api/hud', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            # Update only temperature-related fields, keep counts
+            hud_data.update({
+                'temperature': data.get('temperature'),
+                'humidity': data.get('humidity'),
+                'max_temp': data.get('max_temp', 0.0),
+                'min_temp': data.get('min_temp', 0.0)
+            })
+    except Exception as e:
+        print(f"Error fetching HUD data: {e}")
+
+def generate_video_feed():
+    """Generate video feed for fused frame"""
+    while True:
+        if current_fused_frame is not None:
+            ret, jpeg = cv2.imencode('.jpg', current_fused_frame)
+            if ret:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
+        time.sleep(0.1)
+
+@app.route('/fused_video')
+def fused_video_feed():
+    return Response(generate_video_feed(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/api/hud')
+def get_hud():
+    fetch_hud_data()  # Fetch latest data
+    return jsonify(hud_data)
+
+@app.route('/')
+def index():
+    html = '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Fused Frame Viewer</title>
+        <style>
+            body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+            .container { display: flex; flex-direction: column; height: 100vh; }
+            .video-section { flex: 1; background: black; display: flex; justify-content: center; align-items: center; }
+            .hud-section { flex: 1; background: #f0f0f0; padding: 20px; display: flex; flex-wrap: wrap; justify-content: space-around; align-items: center; }
+            .hud-item { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; min-width: 150px; margin: 10px; }
+            .hud-label { font-size: 14px; color: #666; margin-bottom: 5px; }
+            .hud-value { font-size: 24px; font-weight: bold; color: #333; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="video-section">
+                <img src="/fused_video" style="max-width: 100%; max-height: 100%;" />
+            </div>
+            <div class="hud-section" id="hud-section">
+                <!-- HUD data will be loaded here -->
+            </div>
+        </div>
+        <script>
+            function updateHUD() {
+                fetch('/api/hud')
+                    .then(response => response.json())
+                    .then(data => {
+                        const hudSection = document.getElementById('hud-section');
+                        hudSection.innerHTML = `
+                            <div class="hud-item">
+                                <div class="hud-label">Temperature</div>
+                                <div class="hud-value">${data.temperature !== null ? data.temperature + '°C' : 'N/A'}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Humidity</div>
+                                <div class="hud-value">${data.humidity !== null ? data.humidity + '%' : 'N/A'}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Max Temp</div>
+                                <div class="hud-value">${data.max_temp}°C</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Min Temp</div>
+                                <div class="hud-value">${data.min_temp}°C</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">RGB Count</div>
+                                <div class="hud-value">${data.rgb_count}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Thermal Count</div>
+                                <div class="hud-value">${data.thermal_count}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Fused Count</div>
+                                <div class="hud-value">${data.fused_count}</div>
+                            </div>
+                        `;
+                    })
+                    .catch(error => console.error('Error fetching HUD data:', error));
+            }
+            setInterval(updateHUD, 1000); // Update every second
+            updateHUD(); // Initial load
+        </script>
+    </body>
+    </html>
+    '''
+    return render_template_string(html)
+
 def main():
     try:
         # Load models
@@ -288,7 +424,13 @@ def main():
         thermal_stream = StreamCapture(THERMAL_STREAM_URL, "Thermal")
         rgb_stream = StreamCapture(RGB_STREAM_URL, "RGB")
         
+        # Start Flask app in a separate thread
+        flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False))
+        flask_thread.daemon = True
+        flask_thread.start()
+        
         print("Starting sensor fusion people detection...")
+        print("Web view available at http://localhost:5001")
         print("Press Ctrl+C to stop")
         
         # Process streams

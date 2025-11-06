@@ -1,4 +1,6 @@
 opencv-python
 numpy
 flask
+flask-cors
+requests
 adafruit-circuitpython-dht
