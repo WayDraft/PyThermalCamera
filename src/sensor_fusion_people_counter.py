@@ -23,10 +23,19 @@ import requests
 # Constants
 THERMAL_MODEL_PATH = 'yolov8n.pt'  # YOLOv8n fine-tuned for thermal
 # RGB_MODEL_PATH = 'yolov10m.pt'  # YOLOv10m for RGB (using pretrained instead)
-THERMAL_STREAM_URL = 'http://172.30.1.27:5000/video'  # Thermal MJPEG stream
-RGB_STREAM_URL = 'http://172.30.1.27:5000/rgbvideo'  # RGB MJPEG stream
+THERMAL_STREAM_URL = 'http://raspberrypi.local:5000/video'  # Thermal MJPEG stream
+RGB_STREAM_URL = 'http://raspberrypi.local:5000/rgbvideo'  # RGB MJPEG stream
 CONFIDENCE_THRESHOLD = 0.25  # Detection confidence threshold
 CLASS_PERSON = 0  # Class index for 'person' in COCO dataset
+
+# Risk assessment constants
+AREA = 10.0  # Area in square meters (adjust based on camera field of view)
+D_0 = 5.0  # Inflection point density (people/m²)
+LAMBDA_D = 1.5  # Scaling coefficient for density risk
+THI_BASE = 27.0  # Baseline THI for safety
+LAMBDA_T = 0.5  # Thermal sensitivity coefficient
+W_D = 0.7  # Weight for density risk
+W_T = 0.3  # Weight for thermal risk
 
 # Flask app
 app = Flask(__name__)
@@ -40,7 +49,13 @@ hud_data = {
     'min_temp': 0.0,
     'rgb_count': 0,
     'thermal_count': 0,
-    'fused_count': 0
+    'fused_count': 0,
+    'density': 0.0,
+    'thi': 0.0,
+    'r_d': 0.0,
+    'r_t': 0.0,
+    'r_stampede': 0.0,
+    'risk_level': 'Safe'
 }
 
 class StreamCapture:
@@ -104,6 +119,37 @@ def load_models():
         return thermal_model, rgb_model
     except Exception as e:
         raise RuntimeError(f"Failed to load models: {str(e)}")
+
+def calculate_thi(temperature, humidity):
+    """Calculate Temperature-Humidity Index (THI)"""
+    if temperature is None or humidity is None:
+        return None
+    return temperature - (0.55 - 0.0055 * humidity) * (temperature - 14.5)
+
+def calculate_r_d(density):
+    """Calculate density risk component R_D"""
+    return 1 / (1 + np.exp(-LAMBDA_D * (density - D_0)))
+
+def calculate_r_t(thi):
+    """Calculate thermal stress risk component R_T"""
+    if thi is None:
+        return 0.0
+    return max(0, min(1, LAMBDA_T * (thi - THI_BASE)))
+
+def calculate_r_stampede(r_d, r_t):
+    """Calculate multi-element risk indicator R_stampede"""
+    return W_D * r_d + W_T * r_t
+
+def classify_risk_level(r_stampede):
+    """Classify risk level based on R_stampede"""
+    if r_stampede < 0.25:
+        return 'Safe'
+    elif r_stampede < 0.50:
+        return 'Caution'
+    elif r_stampede < 0.75:
+        return 'High Risk'
+    else:
+        return 'Critical'
 
 def fuse_detections(thermal_results, rgb_results, thermal_frame, rgb_frame):
     """
@@ -224,6 +270,22 @@ def process_streams(thermal_model, rgb_model, thermal_stream, rgb_stream):
             hud_data['rgb_count'] = len(rgb_results[0].boxes) if len(rgb_results) > 0 else 0
             hud_data['thermal_count'] = len(thermal_results[0].boxes) if len(thermal_results) > 0 else 0
             hud_data['fused_count'] = len(fused_detections)
+
+            # Calculate risk indicators
+            density = len(fused_detections) / AREA
+            thi = calculate_thi(hud_data['temperature'], hud_data['humidity'])
+            r_d = calculate_r_d(density)
+            r_t = calculate_r_t(thi)
+            r_stampede = calculate_r_stampede(r_d, r_t)
+            risk_level = classify_risk_level(r_stampede)
+
+            # Update HUD data with risk indicators
+            hud_data['density'] = density
+            hud_data['thi'] = thi if thi is not None else 0.0
+            hud_data['r_d'] = r_d
+            hud_data['r_t'] = r_t
+            hud_data['r_stampede'] = r_stampede
+            hud_data['risk_level'] = risk_level
 
             # Draw detections on frames
             thermal_frame = draw_detections(thermal_frame, thermal_results, "Thermal")
@@ -402,6 +464,30 @@ def index():
                             <div class="hud-item">
                                 <div class="hud-label">Fused Count</div>
                                 <div class="hud-value">${data.fused_count}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Density</div>
+                                <div class="hud-value">${data.density.toFixed(2)} p/m²</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">THI</div>
+                                <div class="hud-value">${data.thi.toFixed(2)}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">R_D</div>
+                                <div class="hud-value">${data.r_d.toFixed(3)}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">R_T</div>
+                                <div class="hud-value">${data.r_t.toFixed(3)}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">R_Stampede</div>
+                                <div class="hud-value">${data.r_stampede.toFixed(3)}</div>
+                            </div>
+                            <div class="hud-item">
+                                <div class="hud-label">Risk Level</div>
+                                <div class="hud-value" style="color: ${data.risk_level === 'Safe' ? 'green' : data.risk_level === 'Caution' ? 'yellow' : data.risk_level === 'High Risk' ? 'orange' : 'red'};">${data.risk_level}</div>
                             </div>
                         `;
                     })
