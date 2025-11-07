@@ -29,10 +29,10 @@ CONFIDENCE_THRESHOLD = 0.25  # Detection confidence threshold
 CLASS_PERSON = 0  # Class index for 'person' in COCO dataset
 
 # Risk assessment constants
-AREA = 10.0  # Area in square meters (adjust based on camera field of view)
+AREA = 1.0  # Area in square meters (adjust based on camera field of view)
 D_0 = 5.0  # Inflection point density (people/m²)
 LAMBDA_D = 1.5  # Scaling coefficient for density risk
-THI_BASE = 27.0  # Baseline THI for safety
+THI_BASE = 25.0  # Baseline THI for safety
 LAMBDA_T = 0.5  # Thermal sensitivity coefficient
 W_D = 0.7  # Weight for density risk
 W_T = 0.3  # Weight for thermal risk
@@ -176,7 +176,7 @@ def fuse_detections(thermal_results, rgb_results, thermal_frame, rgb_frame):
                 # Calculate IoU (Intersection over Union) to see if boxes overlap
                 iou = calculate_iou((t_x1, t_y1, t_x2, t_y2), (r_x1, r_y1, r_x2, r_y2))
                 
-                if iou > 0.3:  # If boxes overlap significantly
+                if iou > 0.3:  # If boxes overlap significantly (lowered threshold)
                     # Fuse the detection: use average confidence and thermal box coordinates
                     fused_conf = (t_conf + r_conf) / 2
                     fused_boxes.append({
@@ -221,8 +221,9 @@ def draw_fused_detections(frame, detections):
     
     # Draw total count in top-left corner
     count = len(detections)
-    cv2.putText(frame, f"Fused People Count: {count}", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    # Removed count text overlay
+    # cv2.putText(frame, f"Fused People Count: {count}", (10, 30),
+    #             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     
     return frame
 
@@ -232,9 +233,9 @@ def process_streams(thermal_model, rgb_model, thermal_stream, rgb_stream):
     start_time = time.time()
     
     # Create windows
-    cv2.namedWindow('Thermal Detection', cv2.WINDOW_NORMAL)
-    cv2.namedWindow('RGB Detection', cv2.WINDOW_NORMAL)
-    cv2.namedWindow('Fused Detection', cv2.WINDOW_NORMAL)
+    # cv2.namedWindow('Thermal Detection', cv2.WINDOW_NORMAL)
+    # cv2.namedWindow('RGB Detection', cv2.WINDOW_NORMAL)
+    # cv2.namedWindow('Fused Detection', cv2.WINDOW_NORMAL)
 
     while True:
         try:
@@ -246,6 +247,9 @@ def process_streams(thermal_model, rgb_model, thermal_stream, rgb_stream):
                 print("Failed to read frames from one or both streams")
                 time.sleep(1)
                 continue
+
+            # Debug frame shapes
+            print(f"Thermal frame shape: {thermal_frame.shape}, RGB frame shape: {rgb_frame.shape}")
 
             # Run detections
             thermal_results = thermal_model.predict(
@@ -269,10 +273,12 @@ def process_streams(thermal_model, rgb_model, thermal_stream, rgb_stream):
             global hud_data
             hud_data['rgb_count'] = len(rgb_results[0].boxes) if len(rgb_results) > 0 else 0
             hud_data['thermal_count'] = len(thermal_results[0].boxes) if len(thermal_results) > 0 else 0
-            hud_data['fused_count'] = len(fused_detections)
+            #hud_data['fused_count'] = len(fused_detections)
+            hud_data['fused_count'] = (hud_data['rgb_count'] + hud_data['thermal_count']) // 2
+
 
             # Calculate risk indicators
-            density = len(fused_detections) / AREA
+            density = hud_data['fused_count'] / AREA
             thi = calculate_thi(hud_data['temperature'], hud_data['humidity'])
             r_d = calculate_r_d(density)
             r_t = calculate_r_t(thi)
@@ -299,9 +305,9 @@ def process_streams(thermal_model, rgb_model, thermal_stream, rgb_stream):
             current_fused_frame = fused_frame.copy()
 
             # Show frames
-            cv2.imshow('Thermal Detection', thermal_frame)
-            cv2.imshow('RGB Detection', rgb_frame)
-            cv2.imshow('Fused Detection', fused_frame)
+            #cv2.imshow('Thermal Detection', thermal_frame)
+            #cv2.imshow('RGB Detection', rgb_frame)
+            #cv2.imshow('Fused Detection', fused_frame)
             
             # Get current timestamp
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -346,8 +352,9 @@ def draw_detections(frame, results, modality):
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
     
     count = len(results[0].boxes) if len(results) > 0 else 0
-    cv2.putText(frame, f"{modality} Count: {count}", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+    # Removed count text overlay
+    # cv2.putText(frame, f"{modality} Count: {count}", (10, 30),
+    #             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
     
     return frame
 
@@ -363,8 +370,9 @@ def create_fused_frame(thermal_frame, rgb_frame, fused_detections):
     
     # Draw fused count on combined frame
     count = len(fused_detections)
-    cv2.putText(combined, f"Fused People Count: {count}", (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    # Removed count text overlay
+    # cv2.putText(combined, f"Fused People Count: {count}", (10, 60),
+    #             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     
     return combined
 
@@ -372,7 +380,7 @@ def fetch_hud_data():
     """Fetch HUD data from the thermal camera API"""
     global hud_data
     try:
-        response = requests.get('http://172.30.1.27:5000/api/hud', timeout=5)
+        response = requests.get('http://raspberrypi.local:5000/api/hud', timeout=5)
         if response.status_code == 200:
             data = response.json()
             # Update only temperature-related fields, keep counts
